@@ -1,0 +1,5 @@
+{
+  "name": "Libooth.Editor",
+  "rootNamespace": "Libooth",
+  "includePlatforms": ["Editor"]
+}

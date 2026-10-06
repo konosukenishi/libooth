@@ -1,0 +1,10 @@
+[package]
+name = "webview"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "webview"
+crate-type = ["cdylib"]
+
+[dependencies]

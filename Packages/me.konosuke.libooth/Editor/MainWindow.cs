@@ -9,7 +9,7 @@ namespace Libooth.Editor
 {
     public class MainWindow : EditorWindow
     {
-        private Browser? _browser;
+        private LoginBrowser? _browser;
         
         [MenuItem("Tools/Libooth")]
         public static void Open()
@@ -20,24 +20,44 @@ namespace Libooth.Editor
 
         private void OnGUI()
         {
-            if (GUILayout.Button("Open WebView"))
+            if (GUILayout.Button("Login"))
             {
-                try
+                if (_browser == null)
                 {
-                    if (_browser?.IsOpen != true)
-                    {
-                        _browser = new Browser(new Uri("https://booth.pm"));
-                    }
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogException(exception);
+                    _ = LoginAsync();
                 }
             }
 
-            if (GUILayout.Button("Close WebView"))
+            if (GUILayout.Button("Close Login"))
             {
                 CloseBrowser();
+            }
+        }
+
+        private async System.Threading.Tasks.Task LoginAsync()
+        {
+            LoginBrowser? browser = null;
+            try
+            {
+                browser = new LoginBrowser();
+                _browser = browser;
+                var cookies = await browser.Completion;
+                Debug.Log($"BOOTH login completed. Retrieved {cookies.Length} cookies.");
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                browser?.Dispose();
+                if (ReferenceEquals(_browser, browser))
+                {
+                    _browser = null;
+                }
             }
         }
 

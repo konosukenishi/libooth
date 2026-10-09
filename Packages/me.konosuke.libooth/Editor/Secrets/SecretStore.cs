@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 
 namespace Libooth.Editor.Secrets
@@ -6,8 +8,8 @@ namespace Libooth.Editor.Secrets
     /// Provides access to the operating system's secret store.
     /// </summary>
     /// <remarks>
-    /// Operations are synchronous and serialized within this class.
-    /// Call them from a background thread to avoid blocking the Unity Editor.
+    /// Operations are synchronous and serialized within this class. Call them from a background
+    /// thread to avoid blocking the Unity Editor.
     /// </remarks>
     public static class SecretStore
     {
@@ -22,7 +24,10 @@ namespace Libooth.Editor.Secrets
         /// <returns>
         /// The stored secret, or null if it is absent or native retrieval fails.
         /// </returns>
-        public static string Get(string key)
+        /// <exception cref="ArgumentException">
+        /// The key is null or empty, or a string argument contains a NUL character.
+        /// </exception>
+        public static string? Get(string key)
         {
             RequireNonEmptyKey(key);
 
@@ -48,17 +53,23 @@ namespace Libooth.Editor.Secrets
             }
         }
 
-
         /// <summary>
         /// Stores or replaces a secret associated with the specified key.
         /// </summary>
         /// <param name="key">
-        /// The nonempty identifier of the secret.</param>
+        /// The nonempty identifier of the secret.
+        /// </param>
         /// <param name="value">
         /// The secret to store. An empty string is allowed.
         /// </param>
         /// <exception cref="InvalidOperationException">
         /// The native secret store fails to save the secret.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// The key is null or empty, or a string argument contains a NUL character.
+        /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// The value is null.
         /// </exception>
         public static void Set(string key, string value)
         {
@@ -79,12 +90,16 @@ namespace Libooth.Editor.Secrets
         /// <summary>
         /// Deletes the secret associated with the specified key.
         /// </summary>
-        /// <param name="key">
-        /// The nonempty identifier of the secret.
-        /// </param>
+        /// <param name="key">The nonempty identifier of the secret.</param>
         /// <exception cref="InvalidOperationException">
         /// The native secret store fails to delete the secret.
         /// </exception>
+        /// <exception cref="ArgumentException">
+        /// The key is null or empty, or a string argument contains a NUL character.
+        /// </exception>
+        /// <remarks>
+        /// Deleting an absent secret succeeds.
+        /// </remarks>
         public static void Delete(string key)
         {
             RequireNonEmptyKey(key);

@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using Libooth.Editor.WebView;
 using UnityEditor;
@@ -7,7 +9,7 @@ namespace Libooth.Editor
 {
     public class MainWindow : EditorWindow
     {
-        private Browser _browser;
+        private Browser? _browser;
         
         [MenuItem("Tools/Libooth")]
         public static void Open()
@@ -22,9 +24,9 @@ namespace Libooth.Editor
             {
                 try
                 {
-                    if (_browser == null || _browser.IsOpen)
+                    if (_browser?.IsOpen != true)
                     {
-                        _browser = Browser.Open("https://booth.pm/users/sign_in");
+                        _browser = new Browser(new Uri("https://booth.pm"));
                     }
                 }
                 catch (Exception exception)

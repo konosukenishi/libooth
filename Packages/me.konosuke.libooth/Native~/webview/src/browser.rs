@@ -36,6 +36,7 @@ impl Browser {
 
         let page_load = Rc::clone(&history);
         let webview = WebViewBuilder::new()
+            .with_incognito(true)
             .with_url(url.as_str())
             .with_on_page_load_handler(move |event, url| {
                 if matches!(event, PageLoadEvent::Finished) {
@@ -56,7 +57,7 @@ impl Browser {
             history,
         })
     }
-    
+
     pub(super) fn window(&self) -> &Window {
         &self.window
     }

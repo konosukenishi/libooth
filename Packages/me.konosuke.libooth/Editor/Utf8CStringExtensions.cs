@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -27,7 +29,7 @@ namespace Libooth.Editor
         /// </exception>
         internal static byte[] ToUtf8CString(this string value)
         {
-            if (value == null)
+            if (value is null)
             {
                 throw new ArgumentNullException(nameof(value));
             }
@@ -58,7 +60,7 @@ namespace Libooth.Editor
         /// Invalid pointers or missing termination can cause a process crash.
         /// Invalid UTF-8 sequences are decoded using replacement characters.
         /// </remarks>
-        internal static string ReadUtf8CString(this IntPtr pointer)
+        internal static string? ReadUtf8CString(this IntPtr pointer)
         {
             if (pointer == IntPtr.Zero)
             {

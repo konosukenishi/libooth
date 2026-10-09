@@ -1,0 +1,3 @@
+[workspace]
+members = ["secrets", "webview"]
+resolver = "3"

@@ -24,7 +24,7 @@ namespace Libooth.Editor
                 {
                     if (_browser == null || _browser.IsOpen)
                     {
-                        _browser = Browser.Open("https://booth.pm");
+                        _browser = Browser.Open("https://booth.pm/users/sign_in");
                     }
                 }
                 catch (Exception exception)

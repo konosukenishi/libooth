@@ -98,10 +98,42 @@ namespace Libooth.Editor.Booth
                 var image = anchor.Descendants("img").FirstOrDefault();
                 var thumbnail = ParseImageUrl(pageUrl, image?.GetAttributeValue("data-src", null)
                                                        ?? image?.GetAttributeValue("src", "") ?? "");
+                HtmlNode? shopLink = null;
+                Uri? shopUrl = null;
+                foreach (var container in anchor.Ancestors())
+                {
+                    if (container.Name is "main" or "body" or "html") break;
+                    // Stop before entering a container shared by different products.
+                    var productIds = container.Descendants("a").Select(a =>
+                        Uri.TryCreate(pageUrl, a.GetAttributeValue("href", ""), out var link)
+                            ? ItemPath.Match(link.AbsolutePath).Groups["id"].Value : "")
+                        .Where(value => value.Length > 0).Distinct().Take(2).Count();
+                    if (productIds > 1) break;
+                    var shopLinks = container.Descendants("a").Where(a =>
+                        Uri.TryCreate(pageUrl, HtmlEntity.DeEntitize(a.GetAttributeValue("href", "")), out var link)
+                        && link.Scheme == Uri.UriSchemeHttps && link.IsDefaultPort && IsBoothHost(link.Host)
+                        && link.Host != "booth.pm" && link.Host != "accounts.booth.pm"
+                        && link.AbsolutePath.Trim('/') == "").ToArray();
+                    shopLink = shopLinks.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.InnerText))
+                        ?? shopLinks.FirstOrDefault();
+                    if (shopLink == null) continue;
+                    shopUrl = ParseImageUrl(pageUrl, shopLink.GetAttributeValue("href", ""));
+                    break;
+                }
+                var shopImage = shopLink?.Descendants("img").FirstOrDefault()
+                    ?? shopLink?.ParentNode.Descendants("img").FirstOrDefault(img =>
+                        img.GetAttributeValue("src", "").Contains("/icon_image/"));
+                var shopName = HtmlEntity.DeEntitize(shopLink?.InnerText ?? "").Trim();
+                if (shopName.Length == 0) shopName = HtmlEntity.DeEntitize(shopImage?.GetAttributeValue("alt", "") ?? "").Trim();
+                shopName = Regex.Replace(shopName, @"\s+", " ");
+                var shopIcon = ParseImageUrl(pageUrl, shopImage?.GetAttributeValue("data-src", null)
+                    ?? shopImage?.GetAttributeValue("src", "") ?? "");
                 items.TryGetValue(id, out var previous);
                 if (previous != null && previous.Name.Length != 0) name = previous.Name;
                 items[id] = new ItemProfile(id, name,
-                    new Uri(url.GetLeftPart(UriPartial.Path)), thumbnail ?? previous?.ThumbnailUrl);
+                    new Uri(url.GetLeftPart(UriPartial.Path)), thumbnail ?? previous?.ThumbnailUrl,
+                    shopName.Length > 0 ? shopName : previous?.ShopName ?? "",
+                    shopIcon ?? previous?.ShopIconUrl, shopUrl ?? previous?.ShopUrl);
             }
 
             var hasNextPage = false;
@@ -176,11 +208,6 @@ namespace Libooth.Editor.Booth
 
             cancellationToken.ThrowIfCancellationRequested();
             var root = document.DocumentNode;
-            var shop = HtmlEntity
-                .DeEntitize(root
-                    .SelectSingleNode("//*[contains(concat(' ', normalize-space(@class), ' '), ' shop-name ')]/a")
-                    ?.InnerText ?? "").Trim();
-
             void AppendDescription(HtmlNode node, StringBuilder text)
             {
                 if (node.Name is "script" or "style" or "iframe") return;
@@ -201,21 +228,20 @@ namespace Libooth.Editor.Booth
             }
 
             var description = new StringBuilder();
-            var blocks =
-                root.SelectNodes(
-                    "//*[contains(concat(' ', normalize-space(@class), ' '), ' js-market-item-detail-description ') or contains(concat(' ', normalize-space(@class), ' '), ' shop__text ')]");
-            if (blocks != null)
-                foreach (var block in blocks)
-                {
-                    AppendDescription(block, description);
-                    description.AppendLine().AppendLine();
-                }
+            // shop__text is a theme class shared by headers, menus and footer links.
+            // Only the dedicated product-description container contains description text.
+            var block = root.SelectSingleNode(
+                "//*[contains(concat(' ', normalize-space(@class), ' '), ' js-market-item-detail-description ')]")
+                ?? root.SelectSingleNode(
+                    "//*[contains(concat(' ', normalize-space(@class), ' '), ' main-info-column ')]" +
+                    "//*[contains(concat(' ', normalize-space(@class), ' '), ' description ')]");
+            if (block != null) AppendDescription(block, description);
 
             var text = HtmlEntity.DeEntitize(description.ToString()).Trim();
             if (text.Length == 0)
                 text = HtmlEntity.DeEntitize(root.SelectSingleNode("//meta[@property='og:description']")
                     ?.GetAttributeValue("content", "") ?? "").Trim();
-            return new Item(profile, shop, text,
+            return new Item(profile, text,
                 ParseImageUrl(profile.Url,
                     root.SelectSingleNode("//meta[@property='og:image']")?.GetAttributeValue("content", "") ?? ""),
                 files.Values.ToArray());

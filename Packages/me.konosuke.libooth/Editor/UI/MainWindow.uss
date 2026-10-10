@@ -1,0 +1,134 @@
+.window-root { flex-grow: 1; min-width: 0; min-height: 0; }
+.layout { flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-width: 0; min-height: 0; overflow: hidden; }
+.sidebar { min-width: 180px; min-height: 0; flex-shrink: 0; }
+.library-search { width: auto; margin: 8px; flex-shrink: 1; min-width: 0; max-width: none; align-self: stretch; }
+.library-search > .unity-text-field { flex-grow: 1; flex-shrink: 1; min-width: 0; }
+.incomplete-results { white-space: normal; margin: 0; min-width: 0; flex-shrink: 1; opacity: 0.7; }
+.items { flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-width: 0; min-height: 0; }
+.item-row { flex-direction: row; align-items: center; padding-left: 8px; padding-right: 8px; }
+.item-thumbnail { width: 36px; height: 36px; flex-shrink: 0; margin-right: 8px; background-color: rgba(128, 128, 128, 0.12); }
+.item-name { flex-grow: 1; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status { white-space: normal; margin-bottom: 8px; }
+.main-view { flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-width: 220px; min-height: 0; }
+.main-view > .unity-scroll-view__content-viewport { min-width: 0; min-height: 0; }
+.detail-content { width: 100%; min-width: 0; padding: 8px; }
+.main-pane { flex-grow: 1; min-width: 220px; min-height: 0; }
+.item-header { height: 109px; min-height: 109px; max-height: 109px; flex-direction: row; align-items: flex-end; flex-shrink: 0; padding: 12px; overflow: hidden; border-bottom-width: 1px; border-bottom-color: rgba(128, 128, 128, 0.35); }
+.header-text { max-height: 84px; overflow: hidden; flex-grow: 1; flex-shrink: 1; min-width: 0; }
+.title-link { margin: 0; padding-right: 20px; }
+.item-title { font-size: 18px; -unity-font-style: bold; white-space: normal; margin: 0; padding: 0; }
+.external-link-icon { position: absolute; width: 16px; height: 16px; visibility: hidden; }
+.title-link.item-link:hover { cursor: link; }
+.title-link.item-link:hover > .external-link-icon { visibility: visible; }
+.title-link.item-link:hover > .item-title { color: rgb(80,160,230); }
+.shop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; flex-shrink: 1; }
+.description { white-space: normal; margin: 0; }
+
+.image-glow { position: absolute; left: 0; right: 0; top: 0; bottom: 0; -unity-background-scale-mode: stretch-to-fill; }
+.item-image { width: 84px; height: 84px; flex-shrink: 0; margin-right: 12px; display: none; }
+
+.detail-loading { display: none; align-items: center; justify-content: center; height: 72px; }
+.loading-spinner { width: 24px; height: 24px; }
+.shop-info { height: 20px; min-height: 20px; flex-shrink: 0; display: none; flex-direction: row; align-items: center; align-self: flex-start; max-width: 100%; margin-top: 6px; }
+.shop-icon { width: 18px; height: 18px; margin-right: 6px; flex-shrink: 0; display: none; border-radius: 9px; overflow: hidden; -unity-background-scale-mode: scale-and-crop; }
+
+.shop-info.item-link:hover { cursor: link; }
+.shop-info.item-link:hover > .shop-name { color: rgb(80,160,230); }
+
+.shop-by { margin: 0 6px 0 0; flex-shrink: 0; opacity: 0.7; }
+
+.description.link-hover { cursor: link; }
+
+.account-menu { margin: 8px 8px 0 8px; min-width: 0; flex-shrink: 0; }
+.account-menu > .unity-toolbar-menu__text { overflow: hidden; text-overflow: ellipsis; }
+/* Keep the ToolbarSearchField's visual input and text inside the same bounds. */
+.library-search { height: 28px; min-height: 28px; padding: 0; }
+.library-search > .unity-text-field {
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    align-self: stretch;
+}
+.library-search .unity-base-text-field__input {
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    align-self: stretch;
+    -unity-text-align: middle-left;
+}
+.library-search .unity-text-element {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    -unity-text-align: middle-left;
+}
+.login-prompt { flex-grow: 1; align-items: center; justify-content: center; }
+.login-center { margin-top: 12px; padding: 8px 24px; height: 36px; }
+
+.account-avatar { width: 16px; height: 16px; margin-right: 6px; flex-shrink: 0; border-radius: 8px; overflow: hidden; -unity-background-scale-mode: scale-and-crop; }
+
+
+.account-menu { height: 28px; flex-direction: row; align-items: center; }
+.account-content { flex-direction: row; align-items: center; flex-grow: 1; flex-shrink: 1; min-width: 0; }
+.account-name { margin: 0; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.items .unity-list-view__empty-label { display: none; }
+.login-status { white-space: normal; margin-top: 8px; max-width: 280px; -unity-text-align: middle-center; }
+
+/* The stock toolbar icon uses offsets for an 18px field. Use a centered row instead. */
+.library-search {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 6px;
+    background-color: rgba(128, 128, 128, 0.10);
+    border-width: 1px;
+    border-color: rgba(128, 128, 128, 0.35);
+    border-radius: 4px;
+}
+.library-search > .unity-search-field-base__search-button,
+.library-search > .unity-search-field-base__cancel-button {
+    position: relative;
+    left: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+    align-self: center;
+    -unity-background-scale-mode: scale-to-fit;
+}
+.library-search > .unity-search-field-base__search-button {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    min-height: 12px;
+    margin-right: 6px;
+}
+.library-search > .unity-search-field-base__text-field { flex-grow: 1; flex-shrink: 1; min-width: 0; }
+.library-search .unity-search-field-base__text-field__input {
+    background-color: transparent;
+    border-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.library-loading { flex-direction: row; align-items: center; margin: 8px; flex-shrink: 0; }
+.library-spinner { display: none; width: 16px; height: 16px; margin-right: 6px; flex-shrink: 0; }
+
+.selection-prompt { flex-grow: 1; align-items: center; justify-content: center; padding: 16px; }
+.selection-message { flex-direction: row; align-items: center; max-width: 100%; }
+.selection-icon { width: 20px; height: 20px; flex-shrink: 0; margin-right: 8px; opacity: 0.7; }
+.selection-text { white-space: normal; flex-shrink: 1; opacity: 0.7; }
+
+.downloads { margin-bottom: 12px; }
+.download-row { flex-direction: row; align-items: center; margin-top: 8px; }
+.download-name { flex-grow: 1; flex-shrink: 1; white-space: normal; }

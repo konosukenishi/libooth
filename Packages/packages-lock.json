@@ -139,7 +139,16 @@
       "version": "file:me.konosuke.libooth",
       "depth": 0,
       "source": "embedded",
-      "dependencies": {}
+      "dependencies": {
+        "org.nuget.htmlagilitypack": "1.13.0"
+      }
+    },
+    "org.nuget.htmlagilitypack": {
+      "version": "1.13.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
     },
     "com.unity.modules.ai": {
       "version": "1.0.0",

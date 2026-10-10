@@ -153,8 +153,9 @@ namespace Libooth.Editor.WebView
 
                 if (authenticated)
                 {
+                    var authenticatedCookies = GetCookies("booth.pm", includeSubdomains: true);
                     base.Dispose();
-                    _completion.TrySetResult(cookies);
+                    _completion.TrySetResult(authenticatedCookies);
                     Dispose();
                 }
             }

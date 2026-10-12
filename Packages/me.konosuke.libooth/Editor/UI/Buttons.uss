@@ -1,0 +1,5 @@
+.primary-button { background-color: var(--unity-colors-highlight-background); color: var(--unity-colors-highlight-text-inactive); border-color: var(--unity-colors-highlight-background); padding: 5px 10px; margin-top: 8px; }
+.primary-button:hover { border-color: var(--unity-colors-button-border_accent-focus); }
+.primary-button:active { background-color: var(--unity-colors-button-background-pressed); color: var(--unity-colors-button-text); }
+.primary-button:focus { border-color: var(--unity-colors-button-border_accent-focus); }
+.primary-button:disabled { background-color: var(--unity-colors-button-background); color: var(--unity-colors-button-text); border-color: var(--unity-colors-button-border); }

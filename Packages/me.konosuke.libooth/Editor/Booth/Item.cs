@@ -8,7 +8,7 @@ namespace Libooth.Editor.Booth
     /// <summary>
     /// Contains product details and purchased files for a library profile.
     /// </summary>
-    public record Item(ItemProfile Profile, string Description, Uri? ImageUrl, IReadOnlyList<ItemDownload> Downloads)
+    public record Item(ItemProfile Profile, string Description, Uri? ImageUrl, IReadOnlyList<Downloadable> Downloadables)
     {
         /// <summary>
         /// The original purchased item profile.
@@ -28,6 +28,6 @@ namespace Libooth.Editor.Booth
         /// <summary>
         /// The files available for the purchased item.
         /// </summary>
-        public IReadOnlyList<ItemDownload> Downloads { get; } = Downloads;
+        public IReadOnlyList<Downloadable> Downloadables { get; } = Downloadables;
     }
 }

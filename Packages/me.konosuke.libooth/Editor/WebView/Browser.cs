@@ -2,6 +2,7 @@
 
 using System;
 using System.Threading;
+using System.Text.Json;
 using UnityEditor;
 using UnityEngine;
 
@@ -169,7 +170,7 @@ namespace Libooth.Editor.WebView
         /// <exception cref="InvalidOperationException">
         /// Retrieval fails or the native response is invalid.
         /// </exception>
-        /// <exception cref="ArgumentException">
+        /// <exception cref="JsonException">
         /// The JSON cannot be parsed.
         /// </exception>
         /// <remarks>
@@ -183,7 +184,7 @@ namespace Libooth.Editor.WebView
                 RequireOpen();
                 var result = ReadJson<HistoryResponse>(Bindings.webview_get_history(_id));
 
-                var urls = result?.history
+                var urls = result?.History
                     ?? throw new InvalidOperationException("The WebView returned an invalid history response.");
 
                 var history = new Uri[urls.Length];
@@ -216,7 +217,10 @@ namespace Libooth.Editor.WebView
         /// The browser window is closed.
         /// </exception>
         /// <exception cref="ArgumentException">
-        /// The domain is empty or contains NUL, or the JSON cannot be parsed.
+        /// The domain is empty or contains NUL.
+        /// </exception>
+        /// <exception cref="JsonException">
+        /// The JSON cannot be parsed.
         /// </exception>
         /// <exception cref="InvalidOperationException">
         /// Retrieval fails or the native response is invalid.
@@ -240,7 +244,7 @@ namespace Libooth.Editor.WebView
                 var result = ReadJson<CookiesResponse>(
                     Bindings.webview_get_cookies(_id, bytes, includeSubdomains));
 
-                return result?.cookies
+                return result?.Cookies
                     ?? throw new InvalidOperationException("The WebView returned an invalid cookies response.");
             });
         }
@@ -339,7 +343,7 @@ namespace Libooth.Editor.WebView
 
                 Bindings.webview_free_string(pointer);
             }
-            return JsonUtility.FromJson<T>(json);
+            return JsonSerializer.Deserialize<T>(json, JsonSerialization.Options);
         }
 
         private static T Invoke<T>(Func<T> action)
@@ -386,25 +390,23 @@ namespace Libooth.Editor.WebView
         /// <summary>
         /// Represents the native history JSON envelope.
         /// </summary>
-        [Serializable]
         private sealed class HistoryResponse
         {
             /// <summary>
             /// The recorded URLs in chronological order.
             /// </summary>
-            public string?[]? history = null;
+            public string?[]? History { get; set; }
         }
 
         /// <summary>
         /// Represents the native cookies JSON envelope.
         /// </summary>
-        [Serializable]
         private sealed class CookiesResponse
         {
             /// <summary>
             /// The selected cookies.
             /// </summary>
-            public Cookie[]? cookies = null;
+            public Cookie[]? Cookies { get; set; }
         }
     }
 }

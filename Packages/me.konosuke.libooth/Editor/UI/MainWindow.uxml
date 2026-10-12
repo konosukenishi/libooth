@@ -1,5 +1,6 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:libooth="Libooth.Editor.UI" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
     <Style src="MainWindow.uss" />
+    <Style src="Buttons.uss" />
     <ui:TwoPaneSplitView name="layout" view-data-key="main-split" fixed-pane-index="0" fixed-pane-initial-dimension="260" orientation="Horizontal" class="layout">
         <ui:VisualElement name="sidebar" class="sidebar">
             <uie:ToolbarMenu name="account-menu" class="account-menu" />
@@ -17,7 +18,7 @@
                     <ui:Image name="login-icon" class="selection-icon" />
                     <ui:Label text="You are not logged in." class="selection-text" />
                 </ui:VisualElement>
-                <ui:Button name="login-center" text="Log in to BOOTH" class="login-center" />
+                <ui:Button name="login-center" text="Log in to BOOTH" class="login-center primary-button" />
                 <ui:Label name="login-status" class="login-status" />
             </ui:VisualElement>
             <ui:VisualElement name="selection-prompt" class="selection-prompt">
@@ -41,16 +42,25 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
+            <uie:Toolbar name="detail-tabs" class="detail-tabs">
+                <uie:ToolbarToggle name="downloads-tab" text="Downloads" value="true" />
+                <uie:ToolbarToggle name="description-tab" text="Description" />
+            </uie:Toolbar>
             <ui:ScrollView name="main-view" mode="Vertical" horizontal-scroller-visibility="Hidden" class="main-view">
                 <ui:VisualElement class="detail-content">
                     <ui:VisualElement name="detail-loading" class="detail-loading">
                         <ui:Image name="loading-spinner" class="loading-spinner" />
                     </ui:VisualElement>
-                    <ui:Label name="detail-status" text="Item details will appear here." class="status" />
                     <ui:VisualElement name="downloads" class="downloads" />
-                    <ui:Label name="description" enable-rich-text="true" class="description" />
+                    <libooth:UrlAwareLabel name="description" enable-rich-text="true" class="description" />
                 </ui:VisualElement>
             </ui:ScrollView>
+            <ui:VisualElement name="detail-error" class="detail-error">
+                <ui:VisualElement class="selection-message">
+                    <ui:Image name="detail-error-icon" class="selection-icon" />
+                    <ui:Label text="Could not load item details." class="selection-text" />
+                </ui:VisualElement>
+            </ui:VisualElement>
         </ui:VisualElement>
     </ui:TwoPaneSplitView>
 </ui:UXML>

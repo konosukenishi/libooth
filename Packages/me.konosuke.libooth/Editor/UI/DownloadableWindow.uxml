@@ -1,0 +1,39 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="True">
+    <Style src="DownloadableWindow.uss" />
+    <Style src="Buttons.uss" />
+    <ui:VisualElement class="download-window">
+        <ui:VisualElement name="loading-view" class="loading-view">
+            <ui:VisualElement class="loading-content">
+                <ui:ProgressBar name="download-progress" low-value="0" high-value="100" title="" class="download-progress" />
+                <ui:Label name="loading-status" text="Checking cache…" class="loading-status" />
+                <ui:Button name="cancel-download" text="Cancel" class="cancel" />
+                <ui:Button name="retry" text="Retry" class="retry" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="content" class="content">
+            <ui:TwoPaneSplitView fixed-pane-index="0" fixed-pane-initial-dimension="220" orientation="Horizontal" name="file-panes" class="file-panes">
+                <ui:VisualElement name="file-pane" class="file-pane">
+                    <ui:ScrollView name="files" mode="Vertical" horizontal-scroller-visibility="Hidden" class="files" />
+                </ui:VisualElement>
+                <ui:VisualElement class="action-pane">
+                    <ui:VisualElement class="file-header">
+                        <ui:Image name="file-header-icon" scale-mode="ScaleToFit" picking-mode="Ignore" class="file-header-icon" />
+                        <ui:Label name="file-header-name" class="file-header-name" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="action-scroll" mode="Vertical" horizontal-scroller-visibility="Hidden" class="action-scroll">
+                        <ui:VisualElement name="actions" class="file-actions" />
+                    </ui:ScrollView>
+                </ui:VisualElement>
+            </ui:TwoPaneSplitView>
+                    <ui:VisualElement name="empty-view" class="empty-view">
+                        <ui:Image name="empty-icon" scale-mode="ScaleToFit" class="empty-icon" />
+                        <ui:Label text="No actions are available for this download." class="empty-label" />
+                    </ui:VisualElement>
+            <ui:VisualElement class="footer">
+                <ui:Button name="clear-cache" text="Remove download…" tooltip="Remove the local download. Files saved with Save as are kept." />
+                <ui:Button name="save-download" text="Save as…" tooltip="Save the original downloaded file" />
+                <ui:Button name="cancel" text="Cancel" class="primary-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

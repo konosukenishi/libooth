@@ -3,7 +3,7 @@
 using System;
 using UnityEngine;
 
-namespace Libooth.Editor.UI
+namespace Libooth.Editor
 {
     /// <summary>Extracts one representative accent from image pixels.</summary>
     internal sealed class AccentColorExtractor

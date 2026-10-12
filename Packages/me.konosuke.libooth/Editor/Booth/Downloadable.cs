@@ -7,7 +7,7 @@ namespace Libooth.Editor.Booth
     /// <summary>
     /// Identifies a purchased file and its authenticated download URL.
     /// </summary>
-    public record ItemDownload(string Name, Uri DownloadUrl)
+    public record Downloadable(string Name, Uri DownloadUrl)
     {
         /// <summary>
         /// The filename displayed by BOOTH.

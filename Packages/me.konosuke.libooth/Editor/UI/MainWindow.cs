@@ -2,18 +2,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Globalization;
-using System.Text;
-using UnityEditor.UIElements;
-using UnityEngine.UIElements.Experimental;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Libooth.Editor.Booth;
 using Libooth.Editor.WebView;
 using UnityEditor;
+using UnityEditor.ShortcutManagement;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -71,23 +71,19 @@ namespace Libooth.Editor.UI
             minSize = new Vector2(480, 320);
             maxSize = new Vector2(4000, 4000);
             rootVisualElement.Clear();
+            rootVisualElement.focusable = true;
+            rootVisualElement.tabIndex = -1;
             rootVisualElement.AddToClassList("window-root");
             AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(LayoutPath).CloneTree(rootVisualElement);
+            var mainPane = rootVisualElement.Q<VisualElement>(className: "main-pane");
+            mainPane.focusable = true;
+            mainPane.tabIndex = -1;
             rootVisualElement.Q<ToolbarToggle>("downloads-tab").RegisterValueChangedCallback(_ => SelectDetailTab(false));
             rootVisualElement.Q<ToolbarToggle>("description-tab").RegisterValueChangedCallback(_ => SelectDetailTab(true));
             SelectDetailTab(_showDescription);
             rootVisualElement.Q<Image>("selection-icon").image = EditorGUIUtility.IconContent("console.infoicon").image;
             rootVisualElement.Q<Image>("login-icon").image = EditorGUIUtility.IconContent("console.infoicon").image;
             rootVisualElement.Q<Image>("detail-error-icon").image = EditorGUIUtility.IconContent("console.erroricon").image;
-            rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
-            {
-                if (evt.keyCode != KeyCode.F || (!evt.ctrlKey && !evt.commandKey) || evt.altKey) return;
-                var field = rootVisualElement.Q<ToolbarSearchField>("search").Q<TextField>();
-                field.Focus();
-                field.SelectAll();
-                evt.StopImmediatePropagation();
-                evt.PreventDefault();
-            }, TrickleDown.TrickleDown);
             _list = rootVisualElement.Q<ListView>("items");
             _status = rootVisualElement.Q<Label>("login-status");
             _login = rootVisualElement.Q<Button>("login-center");
@@ -163,6 +159,8 @@ namespace Libooth.Editor.UI
             {
                 if (_list.selectedItem is ItemProfile profile) Application.OpenURL(profile.Url.AbsoluteUri);
             }));
+            if (rootVisualElement.panel?.focusController.focusedElement == null)
+                rootVisualElement.Focus();
         }
 
         /// <summary>
@@ -183,7 +181,7 @@ namespace Libooth.Editor.UI
                 var element = elements.GetTextElement();
                 if (element == "\r") continue;
                 if (element == "\n" || (line.Length > 0 && title.MeasureTextSize(line.ToString() + element,
-                    0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined, 0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined).x > width))
+                    0, VisualElement.MeasureMode.Undefined, 0, VisualElement.MeasureMode.Undefined).x > width))
                 {
                     lines.Add(line.ToString());
                     line.Clear();
@@ -196,8 +194,8 @@ namespace Libooth.Editor.UI
                 lines.RemoveRange(2, lines.Count - 2);
                 var last = lines[1];
                 while (last.Length > 0 && title.MeasureTextSize(last + "…", 0,
-                    UnityEngine.UIElements.TextElement.MeasureMode.Undefined, 0,
-                    UnityEngine.UIElements.TextElement.MeasureMode.Undefined).x > width)
+                    VisualElement.MeasureMode.Undefined, 0,
+                    VisualElement.MeasureMode.Undefined).x > width)
                 {
                     var positions = StringInfo.ParseCombiningCharacters(last);
                     last = last.Substring(0, positions[positions.Length - 1]);
@@ -206,10 +204,10 @@ namespace Libooth.Editor.UI
             }
             title.tooltip = text;
             title.text = string.Join("\n", lines);
-            var lastWidth = title.MeasureTextSize(lines[lines.Count - 1], 0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined,
-                0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined).x;
-            var height = title.MeasureTextSize(title.text, 0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined,
-                0, UnityEngine.UIElements.TextElement.MeasureMode.Undefined).y;
+            var lastWidth = title.MeasureTextSize(lines[lines.Count - 1], 0, VisualElement.MeasureMode.Undefined,
+                0, VisualElement.MeasureMode.Undefined).x;
+            var height = title.MeasureTextSize(title.text, 0, VisualElement.MeasureMode.Undefined,
+                0, VisualElement.MeasureMode.Undefined).y;
             var icon = rootVisualElement.Q<Image>("external-link-icon");
             icon.style.left = lastWidth + 4;
             icon.style.top = Mathf.Max(0, height - 18);
@@ -240,6 +238,27 @@ namespace Libooth.Editor.UI
             if (_list.selectedItem == null) ClearDetails();
             rootVisualElement.Q<VisualElement>("library-loading").style.display =
                 _user == null || _libraryComplete ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        /// <summary>Finds the library independently of the focused UI element.</summary>
+        [Shortcut("Libooth/Focus search", typeof(MainWindow), KeyCode.F, ShortcutModifiers.Action)]
+        private static void FocusSearchShortcut(ShortcutArguments arguments)
+        {
+            ((MainWindow)arguments.context).FocusSearch();
+        }
+
+        private void FocusSearch()
+        {
+            var field = rootVisualElement.Q<ToolbarSearchField>("search")?.Q<TextField>();
+            if (field == null) return;
+            field.Focus();
+            field.SelectAll();
+        }
+
+        private void OnFocus()
+        {
+            if (rootVisualElement.panel?.focusController.focusedElement == null)
+                rootVisualElement.Focus();
         }
 
         /// <summary>Creates an HTTP session from the standard cookies returned by the browser.</summary>

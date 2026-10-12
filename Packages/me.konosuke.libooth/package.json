@@ -8,6 +8,7 @@
     "name": "Konosuke Nishi"
   },
   "dependencies": {
-    "org.nuget.htmlagilitypack": "1.13.0"
+    "org.nuget.htmlagilitypack": "1.13.0",
+    "org.nuget.system.text.json": "10.0.12"
   }
 }

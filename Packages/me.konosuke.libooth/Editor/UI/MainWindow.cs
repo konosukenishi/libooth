@@ -1,13 +1,10 @@
 #nullable enable
 
 using System;
-using System.IO;
-using System.IO.Compression;
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements.Experimental;
 using System.Net;
@@ -29,10 +26,12 @@ namespace Libooth.Editor.UI
     public class MainWindow : EditorWindow
     {
         private const string LayoutPath = "Packages/me.konosuke.libooth/Editor/UI/MainWindow.uxml";
-        private readonly List<string> _installDirectories = new();
         private readonly List<ItemProfile> _items = new();
         private readonly List<ItemProfile> _filteredItems = new();
         private bool _libraryComplete;
+        private bool _detailFailed;
+        private bool _detailLoading;
+        [SerializeField] private bool _showDescription;
         private readonly AccentColorExtractor _accentColors = new(0.55f, 0.45f);
         private UserProfile? _user;
         private ItemProfile? _selectedItem;
@@ -42,6 +41,7 @@ namespace Libooth.Editor.UI
         private readonly Dictionary<Uri, Task<Texture2D?>> _thumbnails = new();
         private CancellationTokenSource _imageCancellation = new();
         private Texture2D? _imageGlow;
+        private Texture2D? _downloadIcon;
         private IVisualElementScheduledItem? _spinnerAnimation;
         private IVisualElementScheduledItem? _librarySpinnerAnimation;
         private LoginBrowser? _browser;
@@ -73,8 +73,12 @@ namespace Libooth.Editor.UI
             rootVisualElement.Clear();
             rootVisualElement.AddToClassList("window-root");
             AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(LayoutPath).CloneTree(rootVisualElement);
+            rootVisualElement.Q<ToolbarToggle>("downloads-tab").RegisterValueChangedCallback(_ => SelectDetailTab(false));
+            rootVisualElement.Q<ToolbarToggle>("description-tab").RegisterValueChangedCallback(_ => SelectDetailTab(true));
+            SelectDetailTab(_showDescription);
             rootVisualElement.Q<Image>("selection-icon").image = EditorGUIUtility.IconContent("console.infoicon").image;
             rootVisualElement.Q<Image>("login-icon").image = EditorGUIUtility.IconContent("console.infoicon").image;
+            rootVisualElement.Q<Image>("detail-error-icon").image = EditorGUIUtility.IconContent("console.erroricon").image;
             rootVisualElement.RegisterCallback<KeyDownEvent>(evt =>
             {
                 if (evt.keyCode != KeyCode.F || (!evt.ctrlKey && !evt.commandKey) || evt.altKey) return;
@@ -127,30 +131,6 @@ namespace Libooth.Editor.UI
             accountContent.Add(accountName);
             accountMenu.Insert(0, accountContent);
             UpdateLoginView();
-            var descriptionLabel = rootVisualElement.Q<Label>("description");
-            var selection = (ITextSelection)descriptionLabel;
-            selection.isSelectable = true;
-            var pointerDown = Vector2.zero;
-            var selectingText = false;
-            descriptionLabel.RegisterCallback<PointerDownEvent>(evt =>
-            {
-                pointerDown = evt.position;
-                selectingText = false;
-            }, TrickleDown.TrickleDown);
-            descriptionLabel.RegisterCallback<PointerMoveEvent>(evt =>
-            {
-                if ((evt.pressedButtons & 1) != 0 && Vector2.Distance(pointerDown, evt.position) > 3)
-                    selectingText = true;
-            }, TrickleDown.TrickleDown);
-            descriptionLabel.RegisterCallback<PointerOverLinkTagEvent>(_ => descriptionLabel.AddToClassList("link-hover"));
-            descriptionLabel.RegisterCallback<PointerOutLinkTagEvent>(_ => descriptionLabel.RemoveFromClassList("link-hover"));
-            descriptionLabel.RegisterCallback<PointerUpLinkTagEvent>(evt =>
-            {
-                if (evt.button != 0 || selectingText || Vector2.Distance(pointerDown, evt.position) > 3) return;
-                if (Uri.TryCreate(evt.linkID, UriKind.Absolute, out var url)
-                    && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp))
-                    Application.OpenURL(url.AbsoluteUri);
-            });
             _list.selectionChanged += selection =>
             {
                 if (selection.FirstOrDefault() is ItemProfile profile) _ = ShowItemAsync(profile);
@@ -248,8 +228,13 @@ namespace Libooth.Editor.UI
             _list.RefreshItems();
             if (selected != null)
             {
-                var index = _filteredItems.IndexOf(selected);
-                if (index >= 0) _list.SetSelectionWithoutNotify(new[] { index });
+                var index = _filteredItems.FindIndex(item => item.Id == selected.Id);
+                if (index >= 0)
+                {
+                    _list.SetSelectionWithoutNotify(new[] { index });
+                    if (selected.LibraryPageUrl != _filteredItems[index].LibraryPageUrl)
+                        _ = ShowItemAsync(_filteredItems[index]);
+                }
             }
             if (_list.selectedItem == null) ClearDetails();
             rootVisualElement.Q<VisualElement>("library-loading").style.display =
@@ -272,19 +257,24 @@ namespace Libooth.Editor.UI
                 _browser = null;
                 loading.Token.ThrowIfCancellationRequested();
                 _selection?.Cancel();
-
                 var container = new CookieContainer(1000, 1000, 16384);
                 foreach (var cookie in cookies)
                 {
-                    var value = new System.Net.Cookie(cookie.name, cookie.value, cookie.path, cookie.domain)
-                        { Secure = cookie.secure, HttpOnly = cookie.httpOnly };
-                    if (!cookie.session) value.Expires = DateTimeOffset.FromUnixTimeSeconds(cookie.expires).UtcDateTime;
+                    if (!cookie.Domain.TrimStart('.').Equals("booth.pm", StringComparison.OrdinalIgnoreCase)
+                        && !cookie.Domain.EndsWith(".booth.pm", StringComparison.OrdinalIgnoreCase)) continue;
+                    var value = new System.Net.Cookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
+                        { Secure = cookie.Secure, HttpOnly = cookie.HttpOnly };
+                    if (!cookie.Session) value.Expires = DateTimeOffset.FromUnixTimeSeconds(cookie.Expires).UtcDateTime;
                     container.Add(value);
                 }
                 var http = new HttpClient(new HttpClientHandler { CookieContainer = container });
                 var client = new BoothClient(http);
                 UserProfile user;
-                try { user = await client.GetUserProfileAsync(loading.Token); }
+                try
+                {
+                    user = await client.GetUserProfileAsync(loading.Token);
+                    loading.Token.ThrowIfCancellationRequested();
+                }
                 catch { http.Dispose(); throw; }
                 _httpClient = http;
                 _client = client;
@@ -332,7 +322,7 @@ namespace Libooth.Editor.UI
             menu.menu.AppendSeparator();
             menu.menu.AppendAction("Add account", action => { _ = LoginAsync(); },
                 _ => _loading == null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            menu.menu.AppendAction("Log out", _ => Logout(),
+            menu.menu.AppendAction("Log out", action => { Logout(); },
                 _ => _user != null && _loading == null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
             var avatar = rootVisualElement.Q<VisualElement>("account-avatar");
             avatar.style.backgroundImage = StyleKeyword.None;
@@ -347,9 +337,21 @@ namespace Libooth.Editor.UI
         {
             var showDetails = _user != null && _selectedItem != null;
             rootVisualElement.Q<VisualElement>("item-header").style.display = showDetails ? DisplayStyle.Flex : DisplayStyle.None;
-            rootVisualElement.Q<ScrollView>("main-view").style.display = showDetails ? DisplayStyle.Flex : DisplayStyle.None;
+            rootVisualElement.Q<Toolbar>("detail-tabs").style.display = showDetails && !_detailFailed && !_detailLoading ? DisplayStyle.Flex : DisplayStyle.None;
+            rootVisualElement.Q<ScrollView>("main-view").style.display = showDetails && !_detailFailed ? DisplayStyle.Flex : DisplayStyle.None;
+            rootVisualElement.Q<VisualElement>("detail-error").style.display = showDetails && _detailFailed ? DisplayStyle.Flex : DisplayStyle.None;
             rootVisualElement.Q<VisualElement>("selection-prompt").style.display =
                 _user != null && _selectedItem == null ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        /// <summary>Switches the detail tab, retaining the selection across items.</summary>
+        private void SelectDetailTab(bool showDescription)
+        {
+            _showDescription = showDescription;
+            rootVisualElement.Q<ToolbarToggle>("downloads-tab").SetValueWithoutNotify(!showDescription);
+            rootVisualElement.Q<ToolbarToggle>("description-tab").SetValueWithoutNotify(showDescription);
+            rootVisualElement.Q<VisualElement>("downloads").style.display = showDescription ? DisplayStyle.None : DisplayStyle.Flex;
+            rootVisualElement.Q<UrlAwareLabel>("description").style.display = showDescription ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         /// <summary>
@@ -401,6 +403,12 @@ namespace Libooth.Editor.UI
                     {
                         collectionItems.Add(profile.Id);
                         if (seen.Add(profile.Id)) _items.Add(profile);
+                        else if (profile.LibraryPageUrl != null)
+                        {
+                            // Keep the gift download source when the product also appears in purchases.
+                            var index = _items.FindIndex(item => item.Id == profile.Id);
+                            if (index >= 0) _items[index] = profile;
+                        }
                     }
                     FilterItems();
                     _status.text = $"{_items.Count} items loaded...";
@@ -450,10 +458,9 @@ namespace Libooth.Editor.UI
             rootVisualElement.Q<Image>("item-image").image = null;
             rootVisualElement.Q<Image>("item-image").style.display = DisplayStyle.None;
             rootVisualElement.Q<VisualElement>("image-glow").style.backgroundImage = StyleKeyword.None;
-            rootVisualElement.Q<Label>("description").text = "";
+            rootVisualElement.Q<UrlAwareLabel>("description").SetText("");
             rootVisualElement.Q<VisualElement>("detail-loading").style.display = DisplayStyle.None;
             _spinnerAnimation?.Pause();
-            rootVisualElement.Q<Label>("detail-status").text = "Select an item to view its details.";
         }
 
         /// <summary>
@@ -495,8 +502,10 @@ namespace Libooth.Editor.UI
             var shop = rootVisualElement.Q<Label>("shop-name");
             var downloads = rootVisualElement.Q<VisualElement>("downloads");
             downloads.Clear();
-            var description = rootVisualElement.Q<Label>("description");
-            var status = rootVisualElement.Q<Label>("detail-status");
+            var description = rootVisualElement.Q<UrlAwareLabel>("description");
+            _detailFailed = false;
+            _detailLoading = true;
+            UpdateDetailsView();
             title.userData = profile.Name;
             title.text = profile.Name;
             title.schedule.Execute(LayoutTitle);
@@ -516,170 +525,89 @@ namespace Libooth.Editor.UI
             var loading = rootVisualElement.Q<VisualElement>("detail-loading");
             loading.style.display = DisplayStyle.Flex;
             _spinnerAnimation?.Resume();
-            description.text = "";
-            description.RemoveFromClassList("link-hover");
-            status.text = "";
+            description.SetText("");
 
             try
             {
                 var item = await _client!.GetItemAsync(profile, token);
                 token.ThrowIfCancellationRequested();
-                description.text = FormatDescription(item.Description);
-                foreach (var file in item.Downloads)
+                description.SetText(item.Description);
+                foreach (var file in item.Downloadables)
                 {
-                    var row = new VisualElement();
+                    var row = new Box();
                     row.AddToClassList("download-row");
+                    var icon = new Image
+                    {
+                        image = EditorGUIUtility.ObjectContent(null, typeof(DefaultAsset)).image,
+                        scaleMode = ScaleMode.ScaleToFit,
+                        pickingMode = PickingMode.Ignore
+                    };
+                    icon.AddToClassList("file-icon");
+                    row.Add(icon);
                     var name = new Label(file.Name);
                     name.AddToClassList("download-name");
-                    var packages = new VisualElement();
-                    var install = new Button { text = "Install" };
+                    var fileName = new VisualElement();
+                    fileName.AddToClassList("download-file-name");
+                    fileName.Add(name);
+                    var open = new Button();
+                    open.AddToClassList("open-button");
+                    open.AddToClassList("primary-button");
+                    var openIcon = new Image
+                    {
+                        image = GetDownloadIcon(),
+                        tintColor = Color.white,
+                        scaleMode = ScaleMode.ScaleToFit,
+                        pickingMode = PickingMode.Ignore
+                    };
+                    openIcon.AddToClassList("open-icon");
+                    open.Add(openIcon);
+                    var buttonText = new Label { pickingMode = PickingMode.Ignore };
+                    open.Add(buttonText);
                     var client = _client!;
-                    install.clicked += () => _ = InstallAsync(client, file, install, packages, token);
-                    row.Add(name);
-                    row.Add(install);
+                    var cachedIcon = new Image
+                    {
+                        image = EditorGUIUtility.IconContent("d_CacheServerConnected").image,
+                        scaleMode = ScaleMode.ScaleToFit,
+                        tooltip = "Downloaded and cached locally"
+                    };
+                    cachedIcon.AddToClassList("cached-icon");
+                    fileName.Add(cachedIcon);
+                    void UpdateCachedIcon()
+                    {
+                        var cached = client.HasCachedDownload(file);
+                        cachedIcon.style.display = cached ? DisplayStyle.Flex : DisplayStyle.None;
+                        buttonText.text = cached ? "Open" : "Download";
+                        openIcon.image = cached ? EditorGUIUtility.IconContent("Folder Icon").image : GetDownloadIcon();
+                    }
+                    UpdateCachedIcon();
+                    row.schedule.Execute(UpdateCachedIcon).Every(1000);
+                    open.clicked += () => DownloadableWindow.Open(client, file);
+                    row.Add(fileName);
+                    row.Add(open);
+                    if (downloads.childCount == 0) row.style.marginTop = 0;
                     downloads.Add(row);
-                    downloads.Add(packages);
                 }
-                status.text = "";
             }
             catch (OperationCanceledException) { }
             catch (Exception exception)
             {
-                if (!token.IsCancellationRequested && this != null) status.text = "Could not load item details.";
+                if (!token.IsCancellationRequested && this != null)
+                {
+                    _detailFailed = true;
+                    UpdateDetailsView();
+                }
                 Debug.LogException(exception);
             }
             finally
             {
                 if (!token.IsCancellationRequested && this != null)
                 {
+                    _detailLoading = false;
+                    UpdateDetailsView();
                     loading.style.display = DisplayStyle.None;
                     _spinnerAnimation?.Pause();
                 }
             }
-        }
-
-        /// <summary>
-        /// Downloads a file and lets the user select the Unity packages to import.
-        /// </summary>
-        private async Task InstallAsync(BoothClient client, ItemDownload file, Button button,
-            VisualElement packages, CancellationToken token)
-        {
-            button.SetEnabled(false);
-            packages.Clear();
-            var directory = Path.Combine(Path.GetTempPath(), "Libooth", Guid.NewGuid().ToString("N"));
-            _installDirectories.Add(directory);
-            try
-            {
-                var download = new FileInfo(Path.Combine(directory, "download" + Path.GetExtension(file.Name)));
-                var progress = new Progress<DownloadProgress>(value =>
-                {
-                    if (this == null || token.IsCancellationRequested) return;
-                    button.text = value.Fraction.HasValue
-                        ? $"Downloading {value.Fraction.Value:P0}"
-                        : $"Downloading {value.DownloadedBytes / 1048576d:F1} MB";
-                });
-                await client.DownloadAsync(file, download, progress, token);
-                button.text = "Finding packages…";
-                var files = await Task.Run(() =>
-                {
-                    var result = new List<(string Name, string Path)>();
-                    if (Path.GetExtension(file.Name).Equals(".unitypackage", StringComparison.OrdinalIgnoreCase))
-                        result.Add((file.Name, download.FullName));
-                    else
-                    {
-                        using var archive = ZipFile.OpenRead(download.FullName);
-                        foreach (var entry in archive.Entries)
-                        {
-                            token.ThrowIfCancellationRequested();
-                            if (!entry.Name.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)) continue;
-                            var path = Path.Combine(directory, result.Count + ".unitypackage");
-                            using var input = entry.Open();
-                            using var output = File.Create(path);
-                            input.CopyTo(output);
-                            result.Add((entry.FullName, path));
-                        }
-                    }
-                    return result;
-                }, token);
-                token.ThrowIfCancellationRequested();
-                if (files.Count == 0)
-                {
-                    packages.Add(new Label("No .unitypackage files found."));
-                    Directory.Delete(directory, true);
-                    return;
-                }
-                packages.Add(new Label("Select packages to import:"));
-                var choices = new List<(Toggle Toggle, string Path)>();
-                var import = new Button { text = "Import selected" };
-                import.SetEnabled(false);
-                foreach (var package in files)
-                {
-                    var toggle = new Toggle(package.Name);
-                    choices.Add((toggle, package.Path));
-                    toggle.RegisterValueChangedCallback(_ => import.SetEnabled(choices.Any(choice => choice.Toggle.value)));
-                    packages.Add(toggle);
-                }
-                import.clicked += () =>
-                {
-                    var selected = choices.Where(choice => choice.Toggle.value).Select(choice => choice.Path).ToArray();
-                    import.SetEnabled(false);
-                    try
-                    {
-                        foreach (var path in selected) AssetDatabase.ImportPackage(path, false);
-                        packages.Clear();
-                        packages.Add(new Label("Import complete."));
-                    }
-                    catch (Exception exception)
-                    {
-                        packages.Add(new Label("Import failed. See the Console for details."));
-                        Debug.LogException(exception);
-                    }
-                    finally
-                    {
-                        if (Directory.Exists(directory)) Directory.Delete(directory, true);
-                    }
-                };
-                packages.Add(import);
-                button.text = "Downloaded";
-            }
-            catch (OperationCanceledException)
-            {
-                if (Directory.Exists(directory)) Directory.Delete(directory, true);
-            }
-            catch (Exception exception)
-            {
-                if (Directory.Exists(directory)) Directory.Delete(directory, true);
-                if (this != null && !token.IsCancellationRequested)
-                {
-                    packages.Add(new Label("Could not install this file. Only ZIP and .unitypackage files are supported."));
-                    button.text = "Retry";
-                    button.SetEnabled(true);
-                }
-                Debug.LogException(exception);
-            }
-        }
-
-        /// <summary>
-        /// Adds TextCore links while displaying the original description literally.
-        /// </summary>
-        private static string FormatDescription(string text)
-        {
-            var result = new StringBuilder();
-            var offset = 0;
-            string Literal(string value) => Regex.Replace(value, "[<>]", match => $"<noparse>{match.Value}</noparse>");
-            foreach (Match match in Regex.Matches(text, @"https?://[^\s<>""「」『』]+"))
-            {
-                var url = match.Value.TrimEnd('.', ',', ';', '!', '?', ']', '}', '。', '、');
-                // Keep balanced parentheses used in URLs, remove sentence-closing ones.
-                while (url.EndsWith(")") && url.Count(c => c == ')') > url.Count(c => c == '('))
-                    url = url.Substring(0, url.Length - 1);
-                result.Append(Literal(text.Substring(offset, match.Index - offset)));
-                if (Uri.TryCreate(url, UriKind.Absolute, out _))
-                    result.Append($"<link=\"{url}\"><color=#50A0E6><u>{Literal(url)}</u></color></link>");
-                else result.Append(Literal(url));
-                offset = match.Index + url.Length;
-            }
-            return result.Append(Literal(text.Substring(offset))).ToString();
         }
 
         private async Task ShowShopIconAsync(VisualElement image, Uri url, CancellationToken token)
@@ -790,6 +718,47 @@ namespace Libooth.Editor.UI
             catch (Exception exception) { Debug.LogException(exception); return null; }
         }
 
+        /// <summary>Matches the download icon to the open icon's color, preserving its alpha.</summary>
+        private Texture2D GetDownloadIcon()
+        {
+            if (_downloadIcon != null) return _downloadIcon;
+            var source = EditorGUIUtility.IconContent("package_update").image;
+            var temporary = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32);
+            var previous = RenderTexture.active;
+            try
+            {
+                RenderTexture.active = temporary;
+                _downloadIcon = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false)
+                {
+                    hideFlags = HideFlags.HideAndDontSave
+                };
+                Graphics.Blit(EditorGUIUtility.IconContent("Folder Icon").image, temporary);
+                _downloadIcon.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+                var referencePixels = _downloadIcon.GetPixels32();
+                var color = Vector3.zero;
+                float weight = 0;
+                foreach (var pixel in referencePixels)
+                {
+                    color += new Vector3(pixel.r, pixel.g, pixel.b) * pixel.a;
+                    weight += pixel.a;
+                }
+                color = weight > 0 ? color / weight : new Vector3(255, 255, 255);
+                Graphics.Blit(source, temporary);
+                _downloadIcon.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+                var pixels = _downloadIcon.GetPixels32();
+                for (var i = 0; i < pixels.Length; i++)
+                    pixels[i] = new Color32((byte)color.x, (byte)color.y, (byte)color.z, pixels[i].a);
+                _downloadIcon.SetPixels32(pixels);
+                _downloadIcon.Apply();
+                return _downloadIcon;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(temporary);
+            }
+        }
+
         private void OnDestroy()
         {
             _imageClient.Dispose();
@@ -798,11 +767,7 @@ namespace Libooth.Editor.UI
 
         private void OnDisable()
         {
-            foreach (var directory in _installDirectories)
-                if (Directory.Exists(directory))
-                    try { Directory.Delete(directory, true); }
-                    catch (IOException) { }
-            _installDirectories.Clear();
+            if (_downloadIcon != null) DestroyImmediate(_downloadIcon);
             _librarySpinnerAnimation?.Pause();
             _spinnerAnimation?.Pause();
             if (_imageGlow != null) DestroyImmediate(_imageGlow);

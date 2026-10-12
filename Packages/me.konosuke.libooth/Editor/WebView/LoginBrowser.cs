@@ -196,15 +196,15 @@ namespace Libooth.Editor.WebView
             foreach (var cookie in cookies)
             {
                 var nativeCookie = new System.Net.Cookie(
-                    cookie.name, cookie.value, cookie.path, cookie.domain)
+                    cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
                 {
-                    Secure = cookie.secure,
-                    HttpOnly = cookie.httpOnly
+                    Secure = cookie.Secure,
+                    HttpOnly = cookie.HttpOnly
                 };
 
-                if (!cookie.session)
+                if (!cookie.Session)
                 {
-                    nativeCookie.Expires = DateTimeOffset.FromUnixTimeSeconds(cookie.expires).UtcDateTime;
+                    nativeCookie.Expires = DateTimeOffset.FromUnixTimeSeconds(cookie.Expires).UtcDateTime;
                 }
 
                 container.Add(nativeCookie);

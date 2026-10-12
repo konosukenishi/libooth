@@ -7,7 +7,7 @@ namespace Libooth.Editor.Booth
     /// <summary>
     /// Represents an item listed in the authenticated BOOTH library.
     /// </summary>
-    public record ItemProfile(string Id, string Name, Uri Url, Uri? ThumbnailUrl = null, string ShopName = "", Uri? ShopIconUrl = null, Uri? ShopUrl = null)
+    public record ItemProfile(string Id, string Name, Uri Url, Uri? ThumbnailUrl = null, string ShopName = "", Uri? ShopIconUrl = null, Uri? ShopUrl = null, Uri? LibraryPageUrl = null)
     {
         /// <summary>
         /// The BOOTH product identifier.
@@ -38,6 +38,11 @@ namespace Libooth.Editor.Booth
         /// The shop page URL, or null when unavailable.
         /// </summary>
         public Uri? ShopUrl { get; } = ShopUrl;
+
+        /// <summary>
+        /// The authenticated library page containing received gift files, when applicable.
+        /// </summary>
+        public Uri? LibraryPageUrl { get; } = LibraryPageUrl;
 
         /// <summary>
         /// The thumbnail URL, or null when unavailable.

@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -16,7 +18,7 @@ namespace Libooth.Editor.Booth
     /// <summary>
     /// Retrieves purchased items, account information, and files through an existing HTTP session.
     /// </summary>
-    public sealed class BoothClient
+    public sealed partial class BoothClient
     {
         private static readonly Uri LibraryUrl = new("https://accounts.booth.pm/library");
 
@@ -133,7 +135,8 @@ namespace Libooth.Editor.Booth
                 items[id] = new ItemProfile(id, name,
                     new Uri(url.GetLeftPart(UriPartial.Path)), thumbnail ?? previous?.ThumbnailUrl,
                     shopName.Length > 0 ? shopName : previous?.ShopName ?? "",
-                    shopIcon ?? previous?.ShopIconUrl, shopUrl ?? previous?.ShopUrl);
+                    shopIcon ?? previous?.ShopIconUrl, shopUrl ?? previous?.ShopUrl,
+                    path == "/library/gifts" ? pageUrl : null);
             }
 
             var hasNextPage = false;
@@ -159,18 +162,25 @@ namespace Libooth.Editor.Booth
         }
 
         /// <summary>
-        /// Retrieves product details and purchased files for an existing profile.
+        /// Retrieves product details and available purchased, gifted, and free files for an existing profile.
         /// </summary>
         /// <param name="profile">The profile returned by the library.</param>
         /// <param name="cancellationToken">Cancels product and order requests.</param>
         /// <returns>An item retaining the supplied profile.</returns>
         /// <exception cref="ArgumentNullException">The profile is null.</exception>
         /// <exception cref="HttpRequestException">A product or order request fails.</exception>
-        /// <exception cref="InvalidOperationException">The session has expired or a response is not HTML.</exception>
+        /// <exception cref="InvalidOperationException">The item is unavailable, the session has expired, or a response is not HTML.</exception>
         public async Task<Item> GetItemAsync(ItemProfile profile, CancellationToken cancellationToken = default)
         {
             if (profile == null) throw new ArgumentNullException(nameof(profile));
             var document = await GetHtmlAsync(profile.Url, cancellationToken);
+            // Unavailable pages can return HTTP 200 with BOOTH's generic metadata.
+            var product = document.DocumentNode.Descendants().FirstOrDefault(node =>
+                node.GetAttributeValue("data-product-id", "") == profile.Id
+                && node.GetAttributeValue("class", "").Split(' ').Contains("market"));
+            if (product == null || !product.Descendants().Any(node =>
+                    node.GetAttributeValue("class", "").Split(' ').Contains("market-item-detail-article")))
+                throw new InvalidOperationException("The BOOTH item is unavailable or the product page could not be recognized.");
             var orders = document.DocumentNode.Descendants("a")
                 .Select(node =>
                     Uri.TryCreate(profile.Url, HtmlEntity.DeEntitize(node.GetAttributeValue("href", "")), out var url)
@@ -181,28 +191,52 @@ namespace Libooth.Editor.Booth
                     url is { IsDefaultPort: true, Host: "accounts.booth.pm" } &&
                     Regex.IsMatch(url.AbsolutePath, @"^/orders/\d+/?$"))
                 .Distinct();
-            var files = new Dictionary<Uri, ItemDownload>();
+            var pages = new List<(Uri Url, HtmlDocument Document, bool MatchProduct)>
+                { (profile.Url, document, false) };
             foreach (var order in orders)
             {
-                if (order == null) continue;
-                var orderDocument = await GetHtmlAsync(order, cancellationToken);
-                foreach (var button in orderDocument.DocumentNode.Descendants().Where(n =>
-                             n.GetAttributeValue("class", "").Split(' ').Contains("js-download-button")))
+                if (order != null) pages.Add((order, await GetHtmlAsync(order, cancellationToken), true));
+            }
+            if (profile.LibraryPageUrl is { Scheme: "https", Host: "accounts.booth.pm", IsDefaultPort: true } library
+                && library.AbsolutePath == "/library/gifts")
+                pages.Add((library, await GetHtmlAsync(library, cancellationToken), true));
+
+            var files = new Dictionary<Uri, Downloadable>();
+            foreach (var page in pages)
+            {
+                foreach (var button in page.Document.DocumentNode.Descendants().Where(n =>
+                             n.GetAttributeValue("class", "").Split(' ').Contains("js-download-button") || n.Name == "a"))
                 {
-                    if (!Uri.TryCreate(order, HtmlEntity.DeEntitize(button.GetAttributeValue("data-href", "")),
-                            out var url)
+                    if (button.Ancestors().Any(n => n.Name is "aside" or "header" or "footer" or "nav")) continue;
+                    var href = button.GetAttributeValue("data-href", null) ?? button.GetAttributeValue("href", "");
+                    if (!Uri.TryCreate(page.Url, HtmlEntity.DeEntitize(href), out var url)
                         || url.Scheme != Uri.UriSchemeHttps || !url.IsDefaultPort || url.Host != "booth.pm"
                         || !Regex.IsMatch(url.AbsolutePath, @"^/downloadables/\d+/?$")) continue;
-                    var section = button.Ancestors()
-                        .FirstOrDefault(n => n.GetAttributeValue("class", "").Split(' ').Contains("sheet"));
-                    if (section == null || !section.Descendants("a").Any(n =>
-                            Uri.TryCreate(order, n.GetAttributeValue("href", ""), out var product)
-                            && IsBoothHost(product.Host) &&
-                            ItemPath.Match(product.AbsolutePath).Groups["id"].Value == profile.Id)) continue;
-                    var row = button.Ancestors().FirstOrDefault(n =>
-                        n.GetAttributeValue("class", "").Split(' ').Contains("legacy-list-item"));
-                    var name = HtmlEntity.DeEntitize(row?.Descendants("b").FirstOrDefault()?.InnerText ?? "").Trim();
-                    if (name.Length != 0) files[url] = new ItemDownload(name, url);
+                    if (page.MatchProduct)
+                    {
+                        // Match the closest product card, rather than an entire multi-item order or library page.
+                        var productIds = button.Ancestors().Select(container => container.Descendants("a")
+                                .Select(n => Uri.TryCreate(page.Url, n.GetAttributeValue("href", ""), out var product)
+                                    && IsBoothHost(product.Host) ? ItemPath.Match(product.AbsolutePath).Groups["id"].Value : "")
+                                .Where(id => id.Length != 0).Distinct().ToArray())
+                            .FirstOrDefault(ids => ids.Length != 0);
+                        if (productIds == null || productIds.Length != 1 || productIds[0] != profile.Id) continue;
+                    }
+                    var name = HtmlEntity.DeEntitize(button.GetAttributeValue("title", "")).Trim();
+                    if (name.Length == 0)
+                    {
+                        var row = button.Ancestors().FirstOrDefault(n =>
+                            n.GetAttributeValue("class", "").Split(' ').Contains("legacy-list-item"));
+                        name = HtmlEntity.DeEntitize(row?.Descendants("b").FirstOrDefault()?.InnerText ?? "").Trim();
+                    }
+                    if (name.Length == 0)
+                    {
+                        var filename = button.Ancestors().Select(container => container.Descendants("div")
+                                .FirstOrDefault(n => n.GetAttributeValue("class", "").Split(' ').Contains("whitespace-pre-line")))
+                            .FirstOrDefault(n => n != null);
+                        name = HtmlEntity.DeEntitize(filename?.InnerText ?? "").Trim();
+                    }
+                    if (name.Length != 0) files[url] = new Downloadable(name, url);
                 }
             }
 
@@ -317,63 +351,6 @@ namespace Libooth.Editor.Booth
             }
 
             return new UserProfile(id, name, avatarUrl);
-        }
-
-        /// <summary>
-        /// Downloads a file directly to its destination with byte progress notifications.
-        /// </summary>
-        /// <param name="file">The file to retrieve.</param>
-        /// <param name="destination">The destination file, replacing any existing contents.</param>
-        /// <param name="progress">Receives byte counts as data is written.</param>
-        /// <param name="cancellationToken">Cancels transfer and saving.</param>
-        /// <exception cref="ArgumentNullException">The file or destination is null.</exception>
-        /// <exception cref="HttpRequestException">The HTTP request fails.</exception>
-        /// <exception cref="IOException">Saving fails or the response is incomplete.</exception>
-        /// <exception cref="InvalidOperationException">BOOTH returns HTML instead of a file.</exception>
-        /// <remarks>Canceled transfers delete the partial destination file. Other failures may leave it partially written.</remarks>
-        public async Task DownloadAsync(ItemDownload file, FileInfo destination,
-            IProgress<DownloadProgress>? progress = null, CancellationToken cancellationToken = default)
-        {
-            if (file == null) throw new ArgumentNullException(nameof(file));
-            if (destination == null) throw new ArgumentNullException(nameof(destination));
-
-            using var response = await _httpClient
-                .GetAsync(file.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            if (response.Content.Headers.ContentType?.MediaType is "text/html" or "application/xhtml+xml")
-                throw new InvalidOperationException("BOOTH returned a web page instead of a file. Log in again.");
-
-            await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            destination.Directory?.Create();
-            await using var output = new FileStream(destination.FullName, FileMode.Create, FileAccess.Write,
-                FileShare.None, 81920, true);
-            try
-            {
-                var total = response.Content.Headers.ContentLength;
-                var buffer = new byte[81920];
-                long downloaded = 0;
-                progress?.Report(new DownloadProgress(0, total));
-                int count;
-                while ((count = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
-                           .ConfigureAwait(false)) != 0)
-                {
-                    await output.WriteAsync(buffer, 0, count, cancellationToken).ConfigureAwait(false);
-                    downloaded += count;
-                    progress?.Report(new DownloadProgress(downloaded, total));
-                }
-
-                if (total.HasValue && downloaded != total.Value)
-                    throw new IOException("The downloaded file size does not match the response size.");
-                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                output.Dispose();
-                destination.Delete();
-                throw;
-            }
         }
 
         private async Task<HtmlDocument> GetHtmlAsync(Uri url, CancellationToken cancellationToken)

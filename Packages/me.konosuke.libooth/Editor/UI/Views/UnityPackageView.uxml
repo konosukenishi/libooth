@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="True">
+    <Style src="../Buttons.uss" />
+    <Style src="UnityPackageView.uss" />
+    <ui:Label text="Add assets to your project." class="action-message" />
+    <ui:Button name="import" text="Import…" class="primary-button" />
+    <ui:Label name="message" class="action-message" />
+</ui:UXML>

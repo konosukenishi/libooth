@@ -35,7 +35,7 @@ namespace Libooth.Editor.UI
         private readonly AccentColorExtractor _accentColors = new(0.55f, 0.45f);
         private UserProfile? _user;
         private ItemProfile? _selectedItem;
-        private readonly List<(UserProfile Profile, HttpClient Http, BoothClient Client)> _accounts = new();
+        private readonly List<(UserProfile Profile, HttpClient Http, BoothClient Client, Cookie[] Cookies)> _accounts = new();
         private readonly HttpClient _imageClient = new();
         private readonly SemaphoreSlim _imageRequests = new(4);
         private readonly Dictionary<Uri, Task<Texture2D?>> _thumbnails = new();
@@ -137,6 +137,7 @@ namespace Libooth.Editor.UI
                 else ClearDetails();
             };
             _login.clicked += () => _ = LoginAsync();
+            if (_accounts.Count == 0) rootVisualElement.schedule.Execute(() => _ = RestoreAccountsAsync());
             var shopLink = rootVisualElement.Q<VisualElement>("shop-info");
             shopLink.AddManipulator(new Clickable(() =>
             {
@@ -241,6 +242,64 @@ namespace Libooth.Editor.UI
                 _user == null || _libraryComplete ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
+        /// <summary>Creates an HTTP session from the standard cookies returned by the browser.</summary>
+        private static HttpClient CreateAccountClient(Cookie[] cookies)
+        {
+            var container = new CookieContainer(1000, 1000, 16384);
+            foreach (var cookie in cookies)
+            {
+                if (cookie.Domain.TrimStart('.').Equals("booth.pm", StringComparison.OrdinalIgnoreCase)
+                    || cookie.Domain.EndsWith(".booth.pm", StringComparison.OrdinalIgnoreCase))
+                    container.Add(cookie);
+            }
+            return new HttpClient(new HttpClientHandler { CookieContainer = container });
+        }
+
+        /// <summary>Restores saved accounts and selects the most recently logged-in account.</summary>
+        private async Task RestoreAccountsAsync()
+        {
+            if (_loading != null) return;
+            using var loading = new CancellationTokenSource();
+            _loading = loading;
+            _login.SetEnabled(false);
+            try
+            {
+                var saved = await AccountStore.LoadAsync();
+                if (this == null || loading.IsCancellationRequested) return;
+                foreach (var account in saved.Items)
+                {
+                    var http = CreateAccountClient(account.Cookies);
+                    _accounts.Add((account.Profile, http, new BoothClient(http), account.Cookies));
+                }
+                var selected = _accounts.FirstOrDefault(account => account.Profile.Id == saved.LastLoginId);
+                if (selected.Client == null) return;
+                _client = selected.Client;
+                _httpClient = selected.Http;
+                _user = await selected.Client.GetUserProfileAsync(loading.Token);
+                loading.Token.ThrowIfCancellationRequested();
+                if (this == null) return;
+                UpdateLoginView();
+                await LoadLibraryAsync(loading.Token);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception exception)
+            {
+                if (this != null)
+                {
+                    _user = null;
+                    _client = null;
+                    _httpClient = null;
+                    _status.text = "Could not restore the saved account. Please log in again.";
+                }
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                _loading = null;
+                if (this != null) { _login.SetEnabled(true); SetLibraryLoading(false); UpdateLoginView(); }
+            }
+        }
+
         private async Task LoginAsync()
         {
             if (_loading != null) return;
@@ -257,29 +316,22 @@ namespace Libooth.Editor.UI
                 _browser = null;
                 loading.Token.ThrowIfCancellationRequested();
                 _selection?.Cancel();
-                var container = new CookieContainer(1000, 1000, 16384);
-                foreach (var cookie in cookies)
-                {
-                    if (!cookie.Domain.TrimStart('.').Equals("booth.pm", StringComparison.OrdinalIgnoreCase)
-                        && !cookie.Domain.EndsWith(".booth.pm", StringComparison.OrdinalIgnoreCase)) continue;
-                    var value = new System.Net.Cookie(cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
-                        { Secure = cookie.Secure, HttpOnly = cookie.HttpOnly };
-                    if (!cookie.Session) value.Expires = DateTimeOffset.FromUnixTimeSeconds(cookie.Expires).UtcDateTime;
-                    container.Add(value);
-                }
-                var http = new HttpClient(new HttpClientHandler { CookieContainer = container });
+                var http = CreateAccountClient(cookies);
                 var client = new BoothClient(http);
                 UserProfile user;
                 try
                 {
                     user = await client.GetUserProfileAsync(loading.Token);
+                    await AccountStore.SaveAsync(user, cookies);
                     loading.Token.ThrowIfCancellationRequested();
                 }
                 catch { http.Dispose(); throw; }
                 _httpClient = http;
                 _client = client;
                 _user = user;
-                _accounts.Add((user, http, client));
+                foreach (var existing in _accounts.Where(account => account.Profile.Id == user.Id)) existing.Http.Dispose();
+                _accounts.RemoveAll(account => account.Profile.Id == user.Id);
+                _accounts.Add((user, http, client, cookies));
                 ClearDetails();
                 UpdateLoginView();
                 await LoadLibraryAsync(loading.Token);
@@ -308,11 +360,11 @@ namespace Libooth.Editor.UI
             UpdateDetailsView();
             rootVisualElement.Q<VisualElement>("login-prompt").style.display = signedIn ? DisplayStyle.None : DisplayStyle.Flex;
             var menu = rootVisualElement.Q<ToolbarMenu>("account-menu");
-            menu.style.display = signedIn ? DisplayStyle.Flex : DisplayStyle.None;
+            menu.style.display = signedIn || _accounts.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
             menu.text = "";
-            rootVisualElement.Q<Label>("account-name").text = _user?.Name ?? "";
+            rootVisualElement.Q<Label>("account-name").text = _user?.Name ?? "Select account";
             menu.menu.MenuItems().Clear();
-            foreach (var account in _accounts)
+            foreach (var account in _accounts.OrderBy(account => account.Profile.Name, StringComparer.OrdinalIgnoreCase).ThenBy(account => account.Profile.Id, StringComparer.Ordinal))
             {
                 var selected = account;
                 menu.menu.AppendAction(account.Profile.Name, action => { _ = SwitchAccountAsync(selected); },
@@ -322,7 +374,7 @@ namespace Libooth.Editor.UI
             menu.menu.AppendSeparator();
             menu.menu.AppendAction("Add account", action => { _ = LoginAsync(); },
                 _ => _loading == null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
-            menu.menu.AppendAction("Log out", action => { Logout(); },
+            menu.menu.AppendAction("Log out", action => { _ = LogoutAsync(); },
                 _ => _user != null && _loading == null ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
             var avatar = rootVisualElement.Q<VisualElement>("account-avatar");
             avatar.style.backgroundImage = StyleKeyword.None;
@@ -425,7 +477,7 @@ namespace Libooth.Editor.UI
         /// <summary>
         /// Selects an account kept in memory for this window.
         /// </summary>
-        private async Task SwitchAccountAsync((UserProfile Profile, HttpClient Http, BoothClient Client) account)
+        private async Task SwitchAccountAsync((UserProfile Profile, HttpClient Http, BoothClient Client, Cookie[] Cookies) account)
         {
             if (_loading != null) return;
             _selection?.Cancel();
@@ -436,10 +488,32 @@ namespace Libooth.Editor.UI
             UpdateLoginView();
             using var loading = new CancellationTokenSource();
             _loading = loading;
-            try { await LoadLibraryAsync(loading.Token); }
+            try
+            {
+                _user = await account.Client.GetUserProfileAsync(loading.Token);
+                loading.Token.ThrowIfCancellationRequested();
+                if (this == null) return;
+                UpdateLoginView();
+                await LoadLibraryAsync(loading.Token);
+            }
             catch (OperationCanceledException) { if (this != null) _status.text = string.Empty; }
-            catch (Exception exception) { if (this != null) _status.text = "Could not load the library."; Debug.LogException(exception); }
-            finally { _loading = null; if (this != null) SetLibraryLoading(false); }
+            catch (Exception exception)
+            {
+                if (this != null)
+                {
+                    _user = null;
+                    _client = null;
+                    _httpClient = null;
+                    ClearDetails();
+                    _status.text = "Could not open the saved account. Please log in again.";
+                }
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                _loading = null;
+                if (this != null) { SetLibraryLoading(false); UpdateLoginView(); }
+            }
         }
 
         /// <summary>
@@ -466,20 +540,34 @@ namespace Libooth.Editor.UI
         /// <summary>
         /// Signs out locally and forgets the current account's session.
         /// </summary>
-        private void Logout()
+        private async Task LogoutAsync()
         {
-            _selection?.Cancel();
-            _accounts.RemoveAll(account => ReferenceEquals(account.Client, _client));
-            _httpClient?.Dispose();
-            _httpClient = null;
-            _client = null;
-            _user = null;
-            _items.Clear();
-            _libraryComplete = false;
-            ClearDetails();
-            FilterItems();
+            if (_user == null || _loading != null) return;
+            using var loading = new CancellationTokenSource();
+            _loading = loading;
             UpdateLoginView();
-            _status.text = string.Empty;
+            try
+            {
+                await AccountStore.RemoveAsync(_user.Id);
+                if (this == null || loading.IsCancellationRequested) return;
+                _selection?.Cancel();
+                _accounts.RemoveAll(account => ReferenceEquals(account.Client, _client));
+                _httpClient?.Dispose();
+                _httpClient = null;
+                _client = null;
+                _user = null;
+                _items.Clear();
+                _libraryComplete = false;
+                ClearDetails();
+                FilterItems();
+                _status.text = string.Empty;
+            }
+            catch (Exception exception) { Debug.LogException(exception); }
+            finally
+            {
+                _loading = null;
+                if (this != null) UpdateLoginView();
+            }
         }
 
         private async Task ShowItemAsync(ItemProfile profile)

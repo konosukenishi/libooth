@@ -9,7 +9,8 @@ namespace Libooth.Editor
     {
         internal static readonly JsonSerializerOptions Options = new()
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new CookieJsonConverter() }
         };
     }
 }

@@ -58,7 +58,11 @@ jobs:
       - name: Build native plugins
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --manifest-path Native~/Cargo.toml --locked --release --target "$TARGET"
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            export CMAKE_TOOLCHAIN_FILE="$(cygpath -m "$GITHUB_WORKSPACE")/Native~/cmake/windows-msvc.cmake"
+          fi
+          cargo build --manifest-path Native~/Cargo.toml --locked --release --target "$TARGET"
       - name: Prepare native artifact
         env:
           TARGET: ${{ matrix.target }}

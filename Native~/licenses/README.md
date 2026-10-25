@@ -4,8 +4,9 @@ These reviewed files are copied into the Release ZIP as `Native~/licenses/`.
 They cover Cargo.lock for macOS arm64 and Windows x64, SDL 3.4.18 and the Rust 1.98.0 standard
 library. Runtime alternatives use MIT where available; dpi uses Apache-2.0 and
 bundled HIDAPI uses BSD. Original source-header notices are preserved in NOTICE.md.
-RUST-STDLIB.html is the original Rust distribution's standard library notice file,
-including its embedded third-party license texts. MIT.txt and Apache-2.0.txt
+RUST-STDLIB.md preserves the Rust 1.98.0 distribution's standard library notices
+and embedded third-party license texts, converted from COPYRIGHT-library.html
+to Markdown without omitting notice text. MIT.txt and Apache-2.0.txt
 supply full license texts referenced by upstream licensing explanations.
 
 No dependency executable source is bundled. option-ext's MPL-covered functions

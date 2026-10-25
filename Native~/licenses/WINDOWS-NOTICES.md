@@ -1,7 +1,7 @@
 # Additional Windows x64 dependency notices
 
 Reviewed for x86_64-pc-windows-msvc with the current Cargo.lock and Rust 1.98.0.
-Common dependencies and SDL notices are in NOTICE.md. Rust runtime notices are in RUST-STDLIB.html.
+Common dependencies and SDL notices are in NOTICE.md. Rust runtime notices are in RUST-STDLIB.md.
 WebView2 Rust bindings use MIT; the statically linked Microsoft SDK loader has its own license in Microsoft-WebView2-SDK-LICENSE.txt.
 
 The matching SDK is Microsoft.Web.WebView2 1.0.3800.47; its x64 WebView2LoaderStatic.lib

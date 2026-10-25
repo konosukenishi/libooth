@@ -12,7 +12,7 @@
     "org.nuget.htmlagilitypack": "1.13.0",
     "org.nuget.system.text.json": "10.0.12"
   },
-  "url": "https://github.com/konosukenishi/Libooth/releases/download/v0.1.0/dev.konosuke.libooth-0.1.0.zip",
+  "url": "https://github.com/konosukenishi/Libooth/releases/download/v0.1.0-alpha.2/dev.konosuke.libooth-0.1.0-alpha.2.zip",
   "legacyPackages": [
     "me.konosuke.libooth"
   ]

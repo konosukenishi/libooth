@@ -1,0 +1,5 @@
+# Keep the reviewed lockfile fingerprint identical on Windows and macOS.
+/Native~/Cargo.lock text eol=lf
+/Native~/licenses/Cargo.lock.sha256 text eol=lf
+*.dylib binary
+*.dll binary

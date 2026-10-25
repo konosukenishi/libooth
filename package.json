@@ -1,6 +1,6 @@
 {
   "name": "dev.konosuke.libooth",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "displayName": "Libooth",
   "description": "Access and import your BOOTH library directly from the Unity Editor.",
   "unity": "2022.3",

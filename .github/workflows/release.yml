@@ -124,8 +124,14 @@ jobs:
         run: |
           name=$(jq -er '.name' package.json)
           version=$(jq -er '.version' package.json)
-          test "$name" = dev.konosuke.libooth
-          test -z "$RELEASE_TAG" || test "$RELEASE_TAG" = "v$version"
+          if [ "$name" != dev.konosuke.libooth ]; then
+            echo "::error::Unexpected package name: $name"
+            exit 1
+          fi
+          if [ -n "$RELEASE_TAG" ] && [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match package.json version $version (expected v$version)"
+            exit 1
+          fi
           echo "filename=$name-$version.zip" >> "$GITHUB_OUTPUT"
           shasum -a 256 -c Native~/licenses/Cargo.lock.sha256
       - name: Stage package files

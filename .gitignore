@@ -23,3 +23,16 @@
 # macOS
 
 .DS_Store
+
+# Package development project and Rust outputs
+**/Library/
+**/Logs/
+**/obj/
+**/Temp/
+**/UserSettings/
+**/UIElementsSchema/
+Native~/target/
+
+# Native plugin outputs and importer metadata are assembled at build time
+/Editor/Plugins/
+/Editor/Plugins.meta

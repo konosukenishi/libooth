@@ -1,0 +1,179 @@
+name: Build and release VPM package
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    name: Native plugins (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            platform: macOS
+            files: libwebview.dylib libsecrets.dylib
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            platform: Windows
+            files: webview.dll secrets.dll
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/Build/native
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.target }}-rust-1.98.0-${{ hashFiles('Native~/Cargo.lock') }}
+      - name: Check reviewed dependency notices
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            shasum -a 256 -c Native~/licenses/Cargo.lock.sha256
+          else
+            sha256sum -c Native~/licenses/Cargo.lock.sha256
+          fi
+      - name: Build native plugins
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --manifest-path Native~/Cargo.toml --locked --release --target "$TARGET"
+      - name: Prepare native artifact
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          PLUGINS: ${{ matrix.files }}
+        run: |
+          destination="Build/artifact/$PLATFORM"
+          mkdir -p "$destination"
+          metadata="Native~/plugin-metadata/$PLATFORM"
+          cp "$metadata.meta" "Build/artifact/$PLATFORM.meta"
+          for plugin in $PLUGINS; do
+            source="Build/native/$TARGET/release/$plugin"
+            if [ "$PLATFORM" = macOS ]; then
+              test "$(lipo -archs "$source")" = arm64
+            fi
+            cp "$source" "$destination/$plugin"
+            cp "$metadata/$plugin.meta" "$destination/$plugin.meta"
+          done
+      - name: Verify Windows DLL loading and exports
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exports = @{
+            'webview.dll' = @('webview_open', 'webview_close', 'webview_close_all', 'webview_process_events', 'webview_get_history', 'webview_get_cookies', 'webview_navigate', 'webview_is_open', 'webview_free_string')
+            'secrets.dll' = @('secret_get', 'secret_get_legacy', 'secret_set', 'secret_delete', 'secret_free_string')
+          }
+          foreach ($plugin in $exports.Keys) {
+            $path = (Resolve-Path "Build/artifact/Windows/$plugin").Path
+            $handle = [System.Runtime.InteropServices.NativeLibrary]::Load($path)
+            try {
+              foreach ($symbol in $exports[$plugin]) {
+                [void][System.Runtime.InteropServices.NativeLibrary]::GetExport($handle, $symbol)
+              }
+            } finally {
+              [System.Runtime.InteropServices.NativeLibrary]::Free($handle)
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Libooth-native-${{ matrix.platform }}
+          path: Build/artifact/
+          if-no-files-found: error
+  package:
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Libooth-native-*
+          path: Build/native-artifacts
+          merge-multiple: true
+      - name: Validate package and tag
+        id: package
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          name=$(jq -er '.name' package.json)
+          version=$(jq -er '.version' package.json)
+          test "$name" = dev.konosuke.libooth
+          test -z "$RELEASE_TAG" || test "$RELEASE_TAG" = "v$version"
+          echo "filename=$name-$version.zip" >> "$GITHUB_OUTPUT"
+          shasum -a 256 -c Native~/licenses/Cargo.lock.sha256
+      - name: Stage package files
+        run: |
+          mkdir -p Build/package
+          cp -R Editor Editor.meta package.json package.json.meta README.md Build/package/
+          mkdir -p Build/package/Native~
+          cp -R Native~/licenses Native~/licenses.meta Build/package/Native~/
+          mkdir -p Build/package/Editor/Plugins
+          cp Native~/plugin-metadata/Plugins.meta Build/package/Editor/Plugins.meta
+          cp -R Build/native-artifacts/. Build/package/Editor/Plugins/
+          version=$(jq -r '.version' package.json)
+          jq --arg url "https://github.com/konosukenishi/Libooth/releases/download/v$version/dev.konosuke.libooth-$version.zip" '.url = $url' package.json > Build/package/package.json
+          find Build/package -name .DS_Store -delete
+      - name: Create package ZIP
+        working-directory: Build/package
+        env:
+          PACKAGE_FILENAME: ${{ steps.package.outputs.filename }}
+        run: zip -r "../$PACKAGE_FILENAME" .
+      - name: Verify archive
+        env:
+          PACKAGE_ZIP: Build/${{ steps.package.outputs.filename }}
+        run: |
+          unzip -t "$PACKAGE_ZIP"
+          unzip -p "$PACKAGE_ZIP" package.json | jq -e '.name == "dev.konosuke.libooth"'
+          for plugin in macOS/libwebview.dylib macOS/libsecrets.dylib Windows/webview.dll Windows/secrets.dll; do
+            unzip -p "$PACKAGE_ZIP" "Editor/Plugins/$plugin" > /dev/null
+            unzip -p "$PACKAGE_ZIP" "Editor/Plugins/$plugin.meta" > /dev/null
+          done
+          shasum -a 256 "$PACKAGE_ZIP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Libooth-VPM
+          path: Build/dev.konosuke.libooth-*.zip
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Libooth-VPM
+          path: release
+      - name: Publish release with ZIP attached
+        uses: softprops/action-gh-release@v2.5.3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release/dev.konosuke.libooth-*.zip
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
